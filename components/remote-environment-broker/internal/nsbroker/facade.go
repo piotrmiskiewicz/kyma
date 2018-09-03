@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	brokerName       = "remote-env-broker"
-	brokerLabelKey   = "namespaced-remote-env-broker"
+	BrokerName       = "remote-env-broker"
+	BrokerLabelKey   = "namespaced-remote-env-broker"
 	brokerLabelValue = "true"
 )
 
@@ -83,10 +83,10 @@ func (f *Facade) Create(destinationNs string) error {
 
 	broker := &v1beta1.ServiceBroker{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      brokerName,
+			Name:      BrokerName,
 			Namespace: destinationNs,
 			Labels: map[string]string{
-				brokerLabelKey: brokerLabelValue,
+				BrokerLabelKey: brokerLabelValue,
 			},
 		},
 		Spec: v1beta1.ServiceBrokerSpec{
@@ -111,7 +111,7 @@ func (f *Facade) Create(destinationNs string) error {
 // Delete removes ServiceBroker and Facade. Errors don't stop execution of method. NotFound errors are ignored.
 func (f *Facade) Delete(destinationNs string) error {
 	var resultErr *multierror.Error
-	if err := f.brokerGetter.ServiceBrokers(destinationNs).Delete(brokerName, nil); err != nil {
+	if err := f.brokerGetter.ServiceBrokers(destinationNs).Delete(BrokerName, nil); err != nil {
 		f.log.Warnf("Deletion of namespaced-broker for namespace [%s] results in error: [%s]. NotFound errors will be ignored. ", destinationNs, err)
 		resultErr = multierror.Append(resultErr, err)
 	}
@@ -130,12 +130,12 @@ func (f *Facade) Delete(destinationNs string) error {
 
 // Exist check if ServiceBroker and Service exist.
 func (f *Facade) Exist(destinationNs string) (bool, error) {
-	_, err := f.brokerGetter.ServiceBrokers(destinationNs).Get(brokerName, metav1.GetOptions{})
+	_, err := f.brokerGetter.ServiceBrokers(destinationNs).Get(BrokerName, metav1.GetOptions{})
 	switch {
 	case k8serrors.IsNotFound(err):
 		return false, nil
 	case err != nil:
-		return false, errors.Wrapf(err, "while checking if ServiceBroker [%s] exists in the namespace [%s]", brokerName, destinationNs)
+		return false, errors.Wrapf(err, "while checking if ServiceBroker [%s] exists in the namespace [%s]", BrokerName, destinationNs)
 	}
 
 	svcName := f.serviceNameProvider.GetServiceNameForNsBroker(destinationNs)
