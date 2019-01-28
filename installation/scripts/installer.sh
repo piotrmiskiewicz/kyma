@@ -100,7 +100,7 @@ fi
 echo -e "\nConfiguring sub-components"
 bash ${CURRENT_DIR}/configure-components.sh
 
-kubectl apply -f ${RESOURCES_DIR}/podtracker.yaml
+kubectl apply -f ${RESOURCES_DIR}/tracker.yaml
 
 echo -e "\nTriggering installation"
 kubectl label installation/kyma-installation action=install
