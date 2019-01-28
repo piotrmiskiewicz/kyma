@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tracker
+  namespace: kyma-system
+  labels:
+    app: tracker
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: tracker
+  labels:
+    app: tracker
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "watch", "list"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: tracker
+  labels:
+    app: tracker
+subjects:
+- kind: ServiceAccount
+  name: tracker
+  namespace: kyma-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tracker
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tracker
+  namespace: kyma-system
+  labels:
+    app: tracker
+spec:
+  serviceAccountName: tracker
+  containers:
+  - name: tracker
+    image: eu.gcr.io/kyma-project/pod-tracker:0.0.1
+    imagePullPolicy: Always
+
