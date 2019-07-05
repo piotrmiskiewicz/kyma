@@ -21,6 +21,11 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+const (
+	mapLabelKey   = "helm-broker-repo"
+	mapLabelValue = "true"
+)
+
 func main() {
 	verbose := flag.Bool("verbose", false, "specify if log verbosely loading configuration")
 	flag.Parse()
@@ -37,24 +42,31 @@ func main() {
 
 	log := logger.New(&cfg.Logger)
 
+	helmClient := helm.NewClient(cfg.Helm, log)
+
 	storageConfig := storage.ConfigList(cfg.Storage)
 	sFact, err := storage.NewFactory(&storageConfig)
 	fatalOnError(err)
+
+	srv := broker.New(sFact.Bundle(), sFact.Chart(), sFact.InstanceOperation(), sFact.Instance(), sFact.InstanceBindData(),
+		bind.NewRenderer(), bind.NewResolver(clientset.CoreV1()), helmClient, log)
+
+	startedCh := make(chan struct{})
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 	cancelOnInterrupt(ctx, cancelFunc)
 
-	helmClient := helm.NewClient(cfg.Helm, log)
+	err = srv.Run(ctx, fmt.Sprintf(":%d", cfg.Port), startedCh)
+	fatalOnError(err)
+}
+
+func SetupAndRunServer(clientset kubernetes.Interface, helmClient *helm.Client, sFact storage.Factory, log *logrus.Entry) *broker.Server {
 
 	srv := broker.New(sFact.Bundle(), sFact.Chart(), sFact.InstanceOperation(), sFact.Instance(), sFact.InstanceBindData(),
 		bind.NewRenderer(), bind.NewResolver(clientset.CoreV1()), helmClient, log)
-	cancelOnInterrupt(ctx, cancelFunc)
 
-	startedCh := make(chan struct{})
-
-	err = srv.Run(ctx, fmt.Sprintf(":%d", cfg.Port), startedCh)
-	fatalOnError(err)
+	return srv
 }
 
 func fatalOnError(err error) {
