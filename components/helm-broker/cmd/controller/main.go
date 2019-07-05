@@ -89,22 +89,3 @@ func fatalOnError(err error, msg string) {
 		logrus.Fatalf("%s: %s", msg, err.Error())
 	}
 }
-
-func waitAtMost(fn func() (bool, error), duration time.Duration) error {
-	timeout := time.After(duration)
-	tick := time.Tick(500 * time.Millisecond)
-
-	for {
-		ok, err := fn()
-		select {
-		case <-timeout:
-			return fmt.Errorf("waiting for resource failed in given timeout %f second(s)", duration.Seconds())
-		case <-tick:
-			if err != nil {
-				logrus.Println(err)
-			} else if ok {
-				return nil
-			}
-		}
-	}
-}
