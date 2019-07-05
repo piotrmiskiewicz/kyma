@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"github.com/kubernetes-incubator/service-catalog/pkg/client/clientset_generated/clientset/typed/servicecatalog/v1beta1"
 )
 
 const (
@@ -53,45 +54,25 @@ func main() {
 
 	log := logger.New(&cfg.Logger)
 
-	storageConfig := storage.ConfigList(cfg.Storage)
-	sFact, err := storage.NewFactory(&storageConfig)
-	fatalOnError(err)
+
 
 	// ServiceCatalog
 	scClientSet, err := scCs.NewForConfig(k8sConfig)
 	fatalOnError(err)
 	csbInterface := scClientSet.ServicecatalogV1beta1().ClusterServiceBrokers()
 
-	// broker sync
-	stopCh := make(chan struct{})
-	bLoader := bundle.NewLoader(cfg.TmpDir, log)
+
 
 	sch, err := v1alpha1.SchemeBuilder.Build()
 	fatalOnError(err)
 
 	dynamicClient, err := client.New(k8sConfig, client.Options{Scheme: sch})
 	fatalOnError(err)
-
-	docsProvider := bundle.NewDocsProvider(dynamicClient)
-	bundleSyncer := bundle.NewSyncer(sFact.Bundle(), sFact.Chart(), docsProvider, log)
-	brokerSyncer := broker.NewClusterServiceBrokerSyncer(csbInterface, log)
-	cfgMapInformer := v1.NewFilteredConfigMapInformer(clientset, cfg.Namespace, 10*time.Minute, cache.Indexers{}, func(options *metav1.ListOptions) {
-		options.LabelSelector = fmt.Sprintf("%s=%s", mapLabelKey, mapLabelValue)
-	})
-
-	repositoryWatcher := bundle.NewRepositoryController(bundleSyncer, bLoader, brokerSyncer, cfg.ClusterServiceBrokerName, cfgMapInformer, log, cfg.DevelopMode)
-	go repositoryWatcher.Run(stopCh)
-	go cfgMapInformer.Run(stopCh)
-
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	defer cancelFunc()
-	cancelOnChanInterrupt(ctx, stopCh, cancelFunc)
-
 	helmClient := helm.NewClient(cfg.Helm, log)
 
-	srv := broker.New(sFact.Bundle(), sFact.Chart(), sFact.InstanceOperation(), sFact.Instance(), sFact.InstanceBindData(),
-		bind.NewRenderer(), bind.NewResolver(clientset.CoreV1()), helmClient, bundleSyncer, log)
-	cancelOnInterrupt(ctx, cancelFunc)
+	stopCh := make(chan struct{})
+	srv, brokerSyncer := SetupSeverAndRunControllers(cfg, dynamicClient, clientset, csbInterface, helmClient, stopCh, log)
+
 
 	startedCh := make(chan struct{})
 	go func() {
@@ -110,8 +91,40 @@ func main() {
 		}
 	}()
 
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+	cancelOnChanInterrupt(ctx, stopCh, cancelFunc)
+	cancelOnInterrupt(ctx, cancelFunc)
+
 	err = srv.Run(ctx, fmt.Sprintf(":%d", cfg.Port), startedCh)
 	fatalOnError(err)
+}
+
+func SetupSeverAndRunControllers(cfg *config.Config, dynamicClient client.Client, clientset kubernetes.Interface, csbInterface v1beta1.ClusterServiceBrokerInterface, helmClient *helm.Client, stopCh chan struct{}, log *logrus.Entry) (*broker.Server, *broker.ClusterServiceBrokerSync) {
+	storageConfig := storage.ConfigList(cfg.Storage)
+	sFact, err := storage.NewFactory(&storageConfig)
+	fatalOnError(err)
+
+	bLoader := bundle.NewLoader(cfg.TmpDir, log)
+
+	docsProvider := bundle.NewDocsProvider(dynamicClient)
+	bundleSyncer := bundle.NewSyncer(sFact.Bundle(), sFact.Chart(), docsProvider, log)
+
+	brokerSyncer := broker.NewClusterServiceBrokerSyncer(csbInterface, log)
+
+	cfgMapInformer := v1.NewFilteredConfigMapInformer(clientset, cfg.Namespace, 10*time.Minute, cache.Indexers{}, func(options *metav1.ListOptions) {
+		options.LabelSelector = fmt.Sprintf("%s=%s", mapLabelKey, mapLabelValue)
+	})
+
+	repositoryWatcher := bundle.NewRepositoryController(bundleSyncer, bLoader, brokerSyncer, cfg.ClusterServiceBrokerName, cfgMapInformer, log, cfg.DevelopMode)
+	go repositoryWatcher.Run(stopCh)
+	go cfgMapInformer.Run(stopCh)
+
+
+	srv := broker.New(sFact.Bundle(), sFact.Chart(), sFact.InstanceOperation(), sFact.Instance(), sFact.InstanceBindData(),
+		bind.NewRenderer(), bind.NewResolver(clientset.CoreV1()), helmClient, bundleSyncer, log)
+
+	return srv, brokerSyncer
 }
 
 func waitForHelmBrokerIsReady(url string, timeout time.Duration, log logrus.FieldLogger) {
