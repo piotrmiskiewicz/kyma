@@ -1,0 +1,10 @@
+apiVersion: v1
+entries:
+  azure-service-broker:
+    - name: azure-service-broker
+      description: "Azure Service Broker"
+      version: 0.0.1
+  aws-service-broker:
+    - name: aws-service-broker
+      description: "AWS Service Broker"
+      version: 0.0.1
